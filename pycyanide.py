@@ -40,7 +40,7 @@ def update_db():
 	links = get_links(get_soup(url))
 	db2 = sqlite3.connect('links.sqlite')
 	cursor2 = db2.cursor()
-	cursor2.execute("SELECT MAX(comic_num) FROM cyanide WHERE DOne='True'")
+	cursor2.execute("SELECT MAX(comic_num) FROM cyanide")
 	comic = cursor2.fetchone()
 	db2.close()
 	comic_num = comic[0]
