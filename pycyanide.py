@@ -73,7 +73,7 @@ def get_links_from_db():
 	undone_links = cursor.fetchall()
 	db.close()
 	links.reverse()
-	elif len(done_links)>len(undone_links):
+	if len(done_links)>len(undone_links):
 		for link in links:
 			comic_num = link[0]
 			comic_link = link[1]
@@ -175,6 +175,8 @@ def check_link(comic_num,comic_link):
 	db.close()
 		
 def main():
+	if not os.path.exists("Comics"):
+		os.mkdir("Comics")
 	print "CYANIDE & HAPPINESS COMICS DOWNLOADER v2.01a"
 	print '\tChoices:\n\t\t1.Update the DATABASE with the LATEST comics, if available.\n\t\t2.Download comics which have not been downloaded.'
 	choice = input('\t\tEnter choice : ')
