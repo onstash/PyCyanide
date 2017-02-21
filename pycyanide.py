@@ -6,6 +6,7 @@ import time
 import logging
 from PIL import Image
 from StringIO import StringIO
+from argparse import ArgumentParser
 
 from dateutil.parser import parse as date_parse
 from lxml.etree import HTML
@@ -13,8 +14,7 @@ from requests import get
 from requests.exceptions import ReadTimeout, ConnectionError, \
     ConnectTimeout
 
-
-BASE_URL = "http://explosm.net/comics/latest"
+YEAR=None
 COMICS_DIR = path.join(getcwd(), "comics")
 if not path.exists(COMICS_DIR):
     try:
@@ -36,14 +36,18 @@ def fetch_data(url):
     page_tree = get_tree(url)
     if page_tree is None:
         return
+    date = \
+        page_tree.xpath("//div[@class='meta-data']/div/h3/a/text()")[0]
+    date = date_parse(date)
+    if YEAR:
+        if date.year < YEAR:
+            sys.exit(0)
+
     image_link = page_tree.xpath("//img[@id='main-comic']/@src")[0]
     image_link = "http:{}".format(image_link) \
         if image_link.startswith("//") else \
         image_link
     permalink = page_tree.xpath("//input[@id='permalink']/@value")[0]
-    date = \
-        page_tree.xpath("//div[@class='meta-data']/div/h3/a/text()")[0]
-    date = date_parse(date)
     author = page_tree.xpath(
         "//small[@class='author-credit-name']/text()"
     )[0].strip("by ")
@@ -91,20 +95,46 @@ def download_comic(data):
     print("Downloaded comic - {destination}".format(**locals()))
 
 
-if __name__ == '__main__':
-    root_page = fetch_data(BASE_URL)
+def fetch_latest_comic():
+    """Helper method to fetch latest comic id."""
+    base_url = "http://explosm.net/comics/latest"
+    root_page = fetch_data(base_url)
     if not root_page:
         sys.exit("Internet connection is ded!")
-    latest_comic = int(root_page.get("number"))
-    comic_links = map(generate_comic_link, xrange(latest_comic, -1, -1))
+    return int(root_page.get("number"))
+
+
+def generate_limits(arguments):
+    """Helper method to generate limits based on arguments."""
+    return arguments.start or fetch_latest_comic(), arguments.end or 0
+
+
+def process_all_links(links):
+    """Helper method to process links."""
+    error_links = []
     for url in comic_links:
         try:
             process_comic(url)
         except KeyboardInterrupt:
             sys.exit()
-        except BaseException as error:
-            print error
-            _traceback, _value, _type = sys.exc_info()
-            print _traceback
-            print _value
-            print _type
+        except IndexError:
+            error_links.append(url)
+
+    if error_links:
+        process_all_links(error_links)
+
+
+if __name__ == '__main__':
+    argument_parser = ArgumentParser()
+    argument_parser.add_argument("-s", "--start", type=int,
+        help="Indicate starting comic number for crawling")
+    argument_parser.add_argument("-e", "--end", type=int,
+        help="Indicate ending comic number for crawling")
+    argument_parser.add_argument("-y", "--year", type=int,
+        help="Indicate year for crawling")
+    arguments = argument_parser.parse_args()
+    global YEAR
+    YEAR = arguments.year
+    start, stop = generate_limits(arguments)
+    comic_links = map(generate_comic_link, xrange(start, stop, -1))
+    process_all_links(comic_links)

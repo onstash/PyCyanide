@@ -41,3 +41,9 @@ It uses [requests](https://pypi.python.org/pypi/requests/) and [lxml](https://py
     ```
     python pycyanide.py
     ```
+
+    or
+
+    ```
+    python pycyanide.py --start 1613 --end 1512
+    ```
