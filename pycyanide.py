@@ -14,7 +14,6 @@ from requests.exceptions import ReadTimeout, ConnectionError, \
     ConnectTimeout
 
 
-BASE_URL = "http://explosm.net/comics/latest"
 COMICS_DIR = path.join(getcwd(), "comics")
 if not path.exists(COMICS_DIR):
     try:
@@ -91,12 +90,15 @@ def download_comic(data):
     print("Downloaded comic - {destination}".format(**locals()))
 
 
-if __name__ == '__main__':
-    root_page = fetch_data(BASE_URL)
+def fetch_latest_comic():
+    """Helper method to fetch latest comic id."""
+    base_url = "http://explosm.net/comics/latest"
+    root_page = fetch_data(base_url)
     if not root_page:
         sys.exit("Internet connection is ded!")
-    latest_comic = int(root_page.get("number"))
-    comic_links = map(generate_comic_link, xrange(latest_comic, -1, -1))
+    return int(root_page.get("number"))
+
+
     for url in comic_links:
         try:
             process_comic(url)
