@@ -6,6 +6,7 @@ import time
 import logging
 from PIL import Image
 from StringIO import StringIO
+from argparse import ArgumentParser
 
 from dateutil.parser import parse as date_parse
 from lxml.etree import HTML
@@ -110,3 +111,10 @@ def fetch_latest_comic():
             print _traceback
             print _value
             print _type
+if __name__ == '__main__':
+    argument_parser = ArgumentParser()
+    argument_parser.add_argument("-s", "--start", type=int,
+        help="Indicate starting comic number for crawling")
+    argument_parser.add_argument("-e", "--end", type=int,
+        help="Indicate ending comic number for crawling")
+    arguments = argument_parser.parse_args()
