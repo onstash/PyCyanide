@@ -105,17 +105,21 @@ def generate_limits(arguments):
     return arguments.start or fetch_latest_comic(), arguments.end or 0
 
 
+def process_all_links(links):
+    """Helper method to process links."""
+    error_links = []
     for url in comic_links:
         try:
             process_comic(url)
         except KeyboardInterrupt:
             sys.exit()
-        except BaseException as error:
-            print error
-            _traceback, _value, _type = sys.exc_info()
-            print _traceback
-            print _value
-            print _type
+        except BaseException:
+            error_links.append(url)
+
+    if error_links:
+        process_all_links(error_links)
+
+
 if __name__ == '__main__':
     argument_parser = ArgumentParser()
     argument_parser.add_argument("-s", "--start", type=int,
@@ -124,3 +128,5 @@ if __name__ == '__main__':
         help="Indicate ending comic number for crawling")
     arguments = argument_parser.parse_args()
     start, stop = generate_limits(arguments)
+    comic_links = map(generate_comic_link, xrange(start, stop, -1))
+    process_all_links(comic_links)
