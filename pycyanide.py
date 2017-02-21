@@ -1,190 +1,110 @@
-import urllib
-from bs4 import BeautifulSoup as Soup
-import lxml
-import os
+"""Script to download Cyanide & Happiness comics."""
+__author__ = "Santosh Venkatraman<santosh.venk@gmail.com>"
+from os import path, getcwd, mkdir, makedirs
 import sys
 import time
-import sqlite3
+import logging
+from PIL import Image
+from StringIO import StringIO
 
-archive_url = ""
+from dateutil.parser import parse as date_parse
+from lxml.etree import HTML
+from requests import get
+from requests.exceptions import ReadTimeout, ConnectionError, \
+    ConnectTimeout
 
-def get_soup(url):
-	try:
-		page = urllib.urlopen(url).read()
-	except Exception:
-		sys.exit('\tThere seems to a problem with your internet connection or the Universe hates you. Basically you suck! :P')
-	soup = Soup(page)
-	return soup
 
-def insert_db(links):
-	db = sqlite3.connect('links.sqlite')
-	cursor = db.cursor()
-	comics = list()
-	for link in links:
-		num = link[len("http://explosm.net/comics/"):-len("/")]
-		num = int(num)
-		#comics.append((num,link))
-		try:
-			cursor.execute('INSERT INTO cyanide(comic_num,comic_link) VALUES(?,?)',(num,link,))
-			db.commit()
-			print str((num,link)) + " insert -- SUCCESS!"
-		except Exception:
-			db.rollback()
-			#print str((num,link)) + " insert -- FAILURE!"
-	db.close()
-	print "Database succesfully updated!"
-	
+BASE_URL = "http://explosm.net/comics/latest"
+COMICS_DIR = path.join(getcwd(), "comics")
+if not path.exists(COMICS_DIR):
+    try:
+        mkdir(COMICS_DIR)
+    except BaseException:
+        makedirs(COMICS_DIR)
 
-def update_db():
-	url = "http://explosm.net/comics/archive/"
-	links = get_links(get_soup(url))
-	db2 = sqlite3.connect('links.sqlite')
-	cursor2 = db2.cursor()
-	cursor2.execute("SELECT MAX(comic_num) FROM cyanide")
-	comic = cursor2.fetchone()
-	db2.close()
-	comic_num = comic[0]
-	new_links = list()
-	for link in links:
-		num=link[len('http://explosm.net/comics/'):-1]
-		num=int(num)
-		if num>comic_num:
-			new_links.append(link)
-			print link
-	insert_db(new_links)
 
-def get_links(soup):
-	links = list()
-	for link in soup.find_all('a')[21:(len(soup.find_all('a'))-8)]:#archive-2014
-		links.append("http://explosm.net"+link.get('href'))
-	return links
+def get_tree(url):
+    """Helper method to get Tree of the url provided."""
+    try:
+        return HTML(get(url, timeout=3).content)
+    except (ReadTimeout, ConnectTimeout, ConnectionError) as error:        
+        logging.error(error)
 
-def get_links_from_db():
-	db = sqlite3.connect('links.sqlite')
-	cursor = db.cursor()
-	done_links = list()
-	cursor.execute('''SELECT comic_num,comic_link FROM cyanide WHERE Done='True' ''')
-	done_links = cursor.fetchall()
-	cursor.execute('SELECT comic_num,comic_link,Done FROM cyanide')
-	links = list()
-	links = cursor.fetchall()
-	undone_links = list()
-	cursor.execute('''SELECT comic_num,comic_link FROM cyanide WHERE Done='False' ''')
-	undone_links = cursor.fetchall()
-	db.close()
-	links.reverse()
-	if len(done_links)>len(undone_links):
-		for link in links:
-			comic_num = link[0]
-			comic_link = link[1]
-			bool_done = link[2]
-			if bool_done == 'False':
-				#if comic_num == 3544:
-					#cursor.execute('DELETE FROM cyanide WHERE comic_num=?',(comic_num,))
-				#	continue
-				#elif comic_num == 3548 or comic_num == 3547 or comic_num == 3546 or comic_num == 3545:
-				#	continue   
-				check_link(comic_num,comic_link)
-				time.sleep(30)
 
-	else:	
-		for link in links[len(done_links)-1:]:
-			comic_num = link[0]
-			comic_link = link[1]
-			bool_done = link[2]
-			if bool_done == 'False':
-				#if comic_num == 3544:
-					#cursor.execute('DELETE FROM cyanide WHERE comic_num=?',(comic_num,))
-				#	continue
-				#elif comic_num == 3548 or comic_num == 3547 or comic_num == 3546 or comic_num == 3545:
-				#	continue   
-				check_link(comic_num,comic_link)
-				time.sleep(30)
+def fetch_data(url):
+    """Helper method to fetch data from url."""
+    page_tree = get_tree(url)
+    if page_tree is None:
+        return
+    image_link = page_tree.xpath("//img[@id='main-comic']/@src")[0]
+    image_link = "http:{}".format(image_link) \
+        if image_link.startswith("//") else \
+        image_link
+    permalink = page_tree.xpath("//input[@id='permalink']/@value")[0]
+    date = \
+        page_tree.xpath("//div[@class='meta-data']/div/h3/a/text()")[0]
+    date = date_parse(date)
+    author = page_tree.xpath(
+        "//small[@class='author-credit-name']/text()"
+    )[0].strip("by ")
+    comic_number = permalink.strip("/").split("/")[-1]
+    return {
+        "number": comic_number,
+        "image": image_link,
+        "permalink": permalink,
+        "metadata": {
+            "date": (date.year, date.month, date.day),
+            "author": author
+        }
+    }
 
-def download_comic(comic_num,comic_link):
-	if not 'Comics' in os.getcwd():
-		dirr = os.getcwd()
-		os.chdir(dirr+'/Comics/')
-	print str(comic_num) + "--" + comic_link
-	soup = get_soup(comic_link)
-	if "author" in soup.find_all('a')[9].get('href'):
-		author = soup.find_all('a')[9].text.split()[0]
-	elif not "author" in soup.find_all('a')[9].get('href'):
-		#author = "Kris"
-		#author = "Chaseweek"
-		author = "guest4"
-	save = "http://www.explosm.net/db/files/Comics/"+author+"/"
-	comic_image = soup.find_all('img')[-8].get('src')
-	file_name = str(comic_num) + "_" + author + "_" + soup.find_all('img')[-8].get('src')[len(save):]
-	file_name = file_name.replace("/","_")
-	try:
-		comic = urllib.urlopen(comic_image).read()
-		#comic = requests.get(comic_image)
-	except Exception, e:
-		raise e
-		#sys.exit("Failure to open the comic image. Your internet sucks!")
-	if not os.path.exists(file_name):
-		f = open(file_name,"w")
-		f.write(comic)
-		f.close()
-		print "\t" + file_name + " saved! -- SUCCESSFULLY!"
-	else:
-		print "\t" + file_name + " skipped! -- FILE ALREADY EXISTS!"
-	
-	if 'Comics' in os.getcwd():
-		dirr = os.getcwd()
-		os.chdir(dirr[:-len('Comics/')])
-	db = sqlite3.connect('links.sqlite')
-	cursor = db.cursor()
-	cursor.execute('UPDATE cyanide SET Done = ? WHERE comic_num = ?',('True',comic_num,))
-	print "\tUpdated "+ str(comic_num) +" succesfully!"
-	db.commit()
-	db.close()
 
-def check_link(comic_num,comic_link):
-	try:
-		comic = urllib.urlopen(comic_link).read()
-	except Exception:
-		sys.exit('\tThere seems to a problem with your internet connection or the Universe hates you. Basically you suck! :P')
-	comic_soup = Soup(comic)
-	error = 'OH NOES!!! WAHT YOU DOEN!!?Comic could not be found.'
-	soup = get_soup(comic_link)
-	imgs = soup.find_all('img')
-	db = sqlite3.connect('links.sqlite')
-	cursor = db.cursor()
-	if error == soup.find(id="maincontent").text.rstrip():
-		try:
-			cursor.execute('DELETE FROM cyanide WHERE comic_num=?',(comic_num,))
-			print "DELETED " + str(comic_num) + " from cyanide.sqlite because COMIC does not exist! -- SUCCESS!"
-			db.commit()
-		except Exception:
-			print "DELETED " + str(comic_num) + " from cyanide.sqlite because COMIC does not exist! -- FAILED!"
-			db.rollback()
+def generate_comic_link(number):
+    """Helper method to generate comic link based on number."""
+    return "http://explosm.net/comics/{number}".format(**locals())
 
-	elif soup.find_all('img')[9].get('src') == '/comics/play-button.png' or soup.find_all('img')[-8].get('src') == '/comics/play-button.png':
-		try:
-			cursor.execute('DELETE FROM cyanide WHERE comic_num=?',(comic_num,))
-			print "DELETED " + str(comic_num) + " from cyanide.sqlite because it is a VIDEO! -- SUCCESS!"
-			db.commit()
-		except Exception:
-			print "DELETED " + str(comic_num) + " from cyanide.sqlite because it is a VIDEO! -- FAILED!"
-			db.rollback()
-	else:
-		#valid comic
-		download_comic(comic_num,comic_link)
-	db.close()
-		
-def main():
-	if not os.path.exists("Comics"):
-		os.mkdir("Comics")
-	print "CYANIDE & HAPPINESS COMICS DOWNLOADER v2.01a"
-	print '\tChoices:\n\t\t1.Update the DATABASE with the LATEST comics, if available.\n\t\t2.Download comics which have not been downloaded.'
-	choice = input('\t\tEnter choice : ')
-	if choice == 1:
-		update_db()
-	elif choice == 2:
-		get_links_from_db()
+
+def process_comic(url):
+    download_comic(fetch_data(url))
+
+
+def download_comic(data):
+    """Helper method to download comic from source to destination."""
+    if not data:
+        return
+    date = data.get("metadata").get("date")
+    destination = path.join(COMICS_DIR,
+                            str(date[0]),
+                            str(date[1]),
+                            str(date[2]))
+    if not path.exists(destination):
+        makedirs(destination)
+    destination = \
+        path.join(destination, "{}.png".format(data.get("number")))
+    if path.exists(destination):
+        print("Already downloaded comic - {destination}".format(
+            **locals())
+        )
+        return
+    response = get(data.get("image"), stream=True)
+    Image.open(StringIO(response.content)).save(destination)
+    print("Downloaded comic - {destination}".format(**locals()))
 
 
 if __name__ == '__main__':
-	main()
+    root_page = fetch_data(BASE_URL)
+    if not root_page:
+        sys.exit("Internet connection is ded!")
+    latest_comic = int(root_page.get("number"))
+    comic_links = map(generate_comic_link, xrange(latest_comic, -1, -1))
+    for url in comic_links:
+        try:
+            process_comic(url)
+        except KeyboardInterrupt:
+            sys.exit()
+        except BaseException as error:
+            print error
+            _traceback, _value, _type = sys.exc_info()
+            print _traceback
+            print _value
+            print _type
