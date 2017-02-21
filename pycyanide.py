@@ -100,6 +100,11 @@ def fetch_latest_comic():
     return int(root_page.get("number"))
 
 
+def generate_limits(arguments):
+    """Helper method to generate limits based on arguments."""
+    return arguments.start or fetch_latest_comic(), arguments.end or 0
+
+
     for url in comic_links:
         try:
             process_comic(url)
@@ -118,3 +123,4 @@ if __name__ == '__main__':
     argument_parser.add_argument("-e", "--end", type=int,
         help="Indicate ending comic number for crawling")
     arguments = argument_parser.parse_args()
+    start, stop = generate_limits(arguments)
