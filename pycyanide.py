@@ -14,7 +14,7 @@ from requests import get
 from requests.exceptions import ReadTimeout, ConnectionError, \
     ConnectTimeout
 
-
+YEAR=None
 COMICS_DIR = path.join(getcwd(), "comics")
 if not path.exists(COMICS_DIR):
     try:
@@ -36,14 +36,18 @@ def fetch_data(url):
     page_tree = get_tree(url)
     if page_tree is None:
         return
+    date = \
+        page_tree.xpath("//div[@class='meta-data']/div/h3/a/text()")[0]
+    date = date_parse(date)
+    if YEAR:
+        if date.year < YEAR:
+            sys.exit(0)
+
     image_link = page_tree.xpath("//img[@id='main-comic']/@src")[0]
     image_link = "http:{}".format(image_link) \
         if image_link.startswith("//") else \
         image_link
     permalink = page_tree.xpath("//input[@id='permalink']/@value")[0]
-    date = \
-        page_tree.xpath("//div[@class='meta-data']/div/h3/a/text()")[0]
-    date = date_parse(date)
     author = page_tree.xpath(
         "//small[@class='author-credit-name']/text()"
     )[0].strip("by ")
@@ -113,7 +117,7 @@ def process_all_links(links):
             process_comic(url)
         except KeyboardInterrupt:
             sys.exit()
-        except BaseException:
+        except IndexError:
             error_links.append(url)
 
     if error_links:
@@ -126,7 +130,11 @@ if __name__ == '__main__':
         help="Indicate starting comic number for crawling")
     argument_parser.add_argument("-e", "--end", type=int,
         help="Indicate ending comic number for crawling")
+    argument_parser.add_argument("-y", "--year", type=int,
+        help="Indicate year for crawling")
     arguments = argument_parser.parse_args()
+    global YEAR
+    YEAR = arguments.year
     start, stop = generate_limits(arguments)
     comic_links = map(generate_comic_link, xrange(start, stop, -1))
     process_all_links(comic_links)
